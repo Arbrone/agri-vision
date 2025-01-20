@@ -5,7 +5,7 @@ import numpy as np
 import robot
 import cv2
 from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QPainter
+from PySide6.QtGui import QShortcut
 from PySide6.QtWidgets import (QApplication, QHBoxLayout, QLineEdit, QMainWindow,
                                QPushButton, QVBoxLayout, QWidget, QLabel)
 from PySide6.QtCharts import QChartView, QPieSeries, QChart
@@ -14,21 +14,22 @@ from PySide6.QtCharts import QChartView, QPieSeries, QChart
 class Widget(QWidget):
     def __init__(self):
         super().__init__()
-        self.robot = robot.Robot("/home/thomas/Workspace/weed_cleaner/model/best.pt")
+        self.robot = robot.Robot("/home/thomas/Workspace/weed_cleaner/model/best_small.pt")
 
         # Setup
-        self._playground = utils.get_playground("/home/thomas/Workspace/weed_cleaner/model/data/yolo/images/val", (4,4))
-        self._playground_robot = self._playground
-        self._pixmap = utils.convert_to_pixmap(self._playground)
+        self.playground = utils.get_playground("/home/thomas/Workspace/weed_cleaner/model/data/yolo/images/val", (4,4))
+        self.playground_robot = self.playground
+        self.pixmap = utils.convert_to_pixmap(self.playground)
 
         # Top Left
         self.map = QLabel()
-        self.map.setPixmap(self._pixmap)
+        self.map.setPixmap(self.pixmap)
 
         # Top Right
-        self.inference = QLabel("Inference time : 33 ms")
-        self.confiance = QLabel("Confiance : 86%")
-
+        # self.inference = QLabel(f"Inference time : {33}ms")
+        # self.confiance = QLabel(f"Confiance : {86}%")
+        self.inference = QLabel("")
+        self.confiance = QLabel("")
         self.fov = QLabel()
         self.fov.setPixmap(utils.convert_to_pixmap(np.zeros((200,200,3), dtype=np.uint8)))
 
@@ -58,6 +59,23 @@ class Widget(QWidget):
         self.start.clicked.connect(self.start_cleaning)
         self.reset.clicked.connect(self.reset_env)
 
+        # Shortcuts
+        ## GUI
+        self.quit_shortcut = QShortcut(Qt.Key.Key_Q, self)
+        self.quit_shortcut.activated.connect(QApplication.quit)
+        self.reset_shortcut = QShortcut(Qt.Key.Key_R, self)
+        self.reset_shortcut.activated.connect(self.reset_env)
+
+        ## Robot
+        self.move_up_shortcut = QShortcut(Qt.Key.Key_Up, self)
+        self.move_up_shortcut.activated.connect(lambda: self.move("up"))
+        self.move_down_shortcut = QShortcut(Qt.Key.Key_Down, self)
+        self.move_down_shortcut.activated.connect(lambda: self.move("down"))
+        self.move_left_shortcut = QShortcut(Qt.Key.Key_Left, self)
+        self.move_left_shortcut.activated.connect(lambda: self.move("left"))
+        self.move_right_shortcut = QShortcut(Qt.Key.Key_Right, self)
+        self.move_right_shortcut.activated.connect(lambda: self.move("right"))
+
         self.reset_env()
         self.start_cleaning()
 
@@ -66,77 +84,53 @@ class Widget(QWidget):
     def start_cleaning(self):
         pass
 
+    @Slot()
+    def move(self, direction):
+        print(direction)
+        self.robot.move(direction)
+        self.update_map()
 
     @Slot()
     def reset_env(self):
-        self._playground = utils.get_playground("/home/thomas/Workspace/weed_cleaner/model/data/yolo/images/val", (4,4))
-        self._pixmap = utils.convert_to_pixmap(self._playground)
-        self.map.setPixmap(self._pixmap)
+        self.playground = utils.get_playground("/home/thomas/Workspace/weed_cleaner/model/data/yolo/images/val", (4,4))
+        self.playground_robot = self.playground
+        self.pixmap = utils.convert_to_pixmap(self.playground)
+        self.map.setPixmap(self.pixmap)
+
         self.update_map()
 
 
     def update_map(self):
-        self._playground[self.robot.position.x:self.robot.position.x+self.robot.width, self.robot.position.y:self.robot.position.y+self.robot.height, :] = self.robot.asset
-        self._pixmap = utils.convert_to_pixmap(self._playground)
-        self.map.setPixmap(self._pixmap)
+        playground_copy = self.playground_robot.copy()
 
-        #fov_mask = self.get_fov(np.pi/2, np.pi/2)
-        fov_mask = self.robot.extract_fov(self._playground)
-        self.robot.update_fov(fov_mask)
-        result = self.robot.fov_analysis()
-        fov_pixmap = utils.convert_to_pixmap(result)
-        fov_pixmap = fov_pixmap.scaled(200,200,Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        self.fov.setPixmap(fov_pixmap)
+        playground_copy[self.robot.position.y:self.robot.position.y+self.robot.height, 
+                        self.robot.position.x:self.robot.position.x+self.robot.width, :] = self.robot.asset
 
-
-    def get_fov(self, angle, direction_angle):
-        max_distance = 150
-        height, width, _ = self._playground.shape
-
-        # Créer une grille de coordonnées
-        Y, X = np.ogrid[:height, :width]
-
-        # Calculer les distances des points au point de base (x, y)
-        x,y = self.robot.position[0]+self.robot.height/2, self.robot.position[1]+self.robot.width
-        dist = np.sqrt((X - x)**2 + (Y - y)**2)
-
-        # Calculer les angles des points par rapport à (x, y)
-        angles = np.arctan2(Y - y, X - x)
-
-        # Normaliser les angles par rapport à l'angle de direction du cône
-        angle_diff = np.abs(angles - direction_angle)
-        angle_diff = np.where(angle_diff > np.pi, 2 * np.pi - angle_diff, angle_diff)
-
-        # Créer un masque pour les points dans le cône de vision
-        mask = (dist <= max_distance) & (angle_diff <= angle / 2)
-
-        # Appliquer le masque pour obtenir les données dans le cône
-        cone_data = np.zeros_like(self._playground)
-        cone_data[mask] = self._playground[mask]
-        cv2.imwrite("mask.jpg", cone_data)
+        playground_copy = cv2.circle(playground_copy, 
+                                    (int(self.robot.fov_base.x), int(self.robot.fov_base.y)), 
+                                    3, (255, 0, 0), 2)
         
-        xA = x
-        yA = y
-        xB = x + max_distance * np.cos(angle)
-        yB = y + max_distance * np.sin(angle)
+        p1, p2 = self.robot.get_fov_coord()
+        
+        playground_copy = cv2.line(playground_copy, 
+                                (int(self.robot.fov_base.x), int(self.robot.fov_base.y)), 
+                                (int(p1.x), int(p1.y)), (0, 0, 255), 2)
+        playground_copy = cv2.line(playground_copy, 
+                                (int(self.robot.fov_base.x), int(self.robot.fov_base.y)), 
+                                (int(p2.x), int(p2.y)), (0, 0, 255), 2)
 
-        alpha = np.arctan2(yB-yA, xB-xA)
-        beta = alpha + angle/2
-        xC = xA + max_distance*np.cos(beta)
-        yC = yA + max_distance*np.sin(beta)
+        self.pixmap = utils.convert_to_pixmap(playground_copy)        
+        self.map.setPixmap(self.pixmap)
 
-        beta = alpha - angle/2
-        xD = xA + max_distance*np.cos(beta)
-        yD = yA + max_distance*np.sin(beta)
+        fov_mask = self.robot.extract_fov(self.playground)
+        self.robot.update_fov(fov_mask)
 
-        # cone_data = cone_data[yA:int(yB), int(xC):int(xD), :]
-        cone_data = cone_data[yA:int(yB), max(0, int(xC)):min(int(xD),640)+1, :]
-        cv2.imwrite("fov.jpg", cone_data)
-        print(((xA,yA),(xB,yB), (xC,yC), (xD, yD)))
-        print(cone_data.shape)
-        fov_image = np.zeros((2*max_distance, 2*max_distance, 3), dtype=np.uint8)
-        fov_image[:cone_data.shape[0], (fov_image.shape[1]//2)-(cone_data.shape[1]//2):(fov_image.shape[1]//2)+(cone_data.shape[1]//2), :] = cone_data
-        return fov_image
+        result = self.robot.fov_analysis()
+
+        fov_pixmap = utils.convert_to_pixmap(result)
+        fov_pixmap = fov_pixmap.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
+        self.fov.setPixmap(fov_pixmap)
 
 
 class MainWindow(QMainWindow):
@@ -151,8 +145,8 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     widget = Widget()
     window = MainWindow(widget)
-    #window.setFixedSize(860, 700)
-    window.setFixedSize(1000, 700)
+    window.setFixedSize(860, 700)
+    #window.setFixedSize(1000, 700)
     window.show()
 
     # Execute application

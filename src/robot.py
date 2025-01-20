@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+
 from utils import Point
 from ultralytics import YOLO
 
@@ -9,47 +10,62 @@ class Robot:
         self.height = self.asset.shape[0]
         self.width = self.asset.shape[1]
         self.model = YOLO(model)
-        self.position = Point(300,300)
+        self.position = Point(0,0)
         self.direction = np.pi/2
         self.fov = np.zeros((100, 100, 3))
         self.fov_angle = fov_angle
+        self.fov_base = Point(self.position.x+self.width/2, self.position.y+self.height)
         self.fov_distance = fov_distance
-    
+
+    def check_position(self, position):
+        return position
+
     def move(self, direction):
-        if direction == "down":
-            self.position.y = self.position.y + self.height
+        match direction:
+            case "down":
+                print(self.position.x, self.position.y)
+                self.position.y = self.check_position(self.position.y + self.height)
+                self.direction = np.pi/2
+                self.fov_base = Point(self.position.x+self.width/2, self.position.y+self.height)
+            case "up":
+                self.position.y = self.check_position(self.position.y - self.height)
+                self.direction = -np.pi/2
+                self.fov_base = Point(self.position.x+self.width/2, self.position.y)
+            case "left":
+                self.position.x = self.check_position(self.position.x - self.width)
+                self.direction = np.pi
+                self.fov_base = Point(self.position.x, self.position.y+self.height/2)
+            case "right":
+                self.position.x = self.check_position(self.position.x + self.width)
+                self.direction = 0
+                self.fov_base = Point(self.position.x+self.width, self.position.y+self.height/2)
+
 
     def update_fov(self, new_fov):
         self.fov = new_fov
     
-    def get_fov_coord(self, playground_shape):
-        # Calculer les distances des points au point de base (x, y)
-        # Base du cône, ici en bas / en haut du robot
-        xA,yA = self.position.x+self.width/2, self.position.y+self.height
-        
-        xB = xA + self.fov_distance * np.cos(self.fov_angle)
-        yB = yA + self.fov_distance * np.sin(self.fov_angle)
+    def get_fov_coord(self):
+        delta_angle = np.pi / 4  # 45 deg
 
-        alpha = np.arctan2(yB-yA, xB-xA)
-        beta = alpha + self.fov_angle/2
-        xC = xA + self.fov_distance*np.cos(beta)
-        yC = yA + self.fov_distance*np.sin(beta)
+        angle1 = self.direction + delta_angle
+        angle2 = self.direction - delta_angle
 
-        beta = alpha - self.fov_angle/2
-        xD = xA + self.fov_distance*np.cos(beta)
-        yD = yA + self.fov_distance*np.sin(beta)
+        x1 = self.fov_base.x + self.fov_distance * np.cos(angle1)
+        y1 = self.fov_base.y + self.fov_distance * np.sin(angle1)
 
-        return((xA,yA),(xB,yB), (xC,yC), (xD, yD))
+        x2 = self.fov_base.x + self.fov_distance * np.cos(angle2)
+        y2 = self.fov_base.y + self.fov_distance * np.sin(angle2)
+
+        return Point(x1, y1), Point(x2, y2)
     
     def extract_fov(self, playground):
         height, width, _ = playground.shape
-        pA, pB, pC, pD = self.get_fov_coord(playground.shape)
-        # Créer une grille de coordonnées
+
         Y, X = np.ogrid[:height, :width]
-        dist = np.sqrt((X - pA[0])**2 + (Y - pA[1])**2)
+        dist = np.sqrt((X - self.fov_base.x)**2 + (Y - self.fov_base.y)**2)
 
         # Calculer les angles des points par rapport à (x, y)
-        angles = np.arctan2(Y - pA[1], X - pA[0])
+        angles = np.arctan2(Y - self.fov_base.y, X - self.fov_base.x)
 
         # Normaliser les angles par rapport à l'angle de direction du cône
         angle_diff = np.abs(angles - self.direction)
@@ -63,7 +79,9 @@ class Robot:
         cone_data[mask] = playground[mask]
 
         # # cone_data = cone_data[yA:int(yB), int(xC):int(xD), :]
-        cone_data = cone_data[int(pA[1]):int(pB[1]), max(0, int(pC[0])):min(int(pD[0]),640)+1, :]
+        # match self.direction:
+        #     case 
+        # cone_data = cone_data[int(self.fov_base.y):int(pB[1]), max(0, int(pC[0])):min(int(pD[0]),640)+1, :]
         cv2.imwrite("fov.jpg", cone_data)
 
         # fov_image = np.zeros((2*self.fov_distance, 2*self.fov_distance, 3), dtype=np.uint8)
@@ -72,17 +90,27 @@ class Robot:
 
     def fov_analysis(self):
         results = self.model.predict(self.fov)
-        return self.plot_bboxes(results, self.fov)
+        return self.plot_bboxes(results)
     
-    def plot_bboxes(self, results, frame):
-        xyxys = []
-        confidences = []
+    # def plot_bboxes(self, results, frame):
+    #     xyxys = []
+    #     confidences = []
+
+    #     for result in results:
+    #         boxes = result.boxes.cpu().numpy()
+    #         xyxys = boxes.xyxy
+
+    #         for xyxy in xyxys:
+    #             cv2.rectangle(frame, (int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3])), (255,0,0), 1)
+
+    #         return result.plot()
+
+    #     # return frame
+
+    def plot_bboxes(self, results):
+        img = None
 
         for result in results:
-            boxes = result.boxes.cpu().numpy()
-            xyxys = boxes.xyxy
+            img = result.plot(line_width=1, labels=False, probs=True)
 
-            for xyxy in xyxys:
-                cv2.rectangle(frame, (int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3])), (255,0,0), 1)
-
-        return frame
+        return img
