@@ -1,5 +1,4 @@
 import sys
-import time
 import utils
 import numpy as np
 import robot
@@ -92,6 +91,8 @@ class Widget(QWidget):
 
     @Slot()
     def reset_env(self):
+        self.robot.reset()
+
         self.playground = utils.get_playground("/home/thomas/Workspace/weed_cleaner/model/data/yolo/images/val", (4,4))
         self.playground_robot = self.playground
         self.pixmap = utils.convert_to_pixmap(self.playground)

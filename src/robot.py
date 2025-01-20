@@ -17,6 +17,12 @@ class Robot:
         self.fov_base = Point(self.position.x+self.width/2, self.position.y+self.height)
         self.fov_distance = fov_distance
 
+    def reset(self):
+        self.position = Point(0,0)
+        self.direction = np.pi/2
+        self.fov_angle = np.pi/2
+        self.fov_base = Point(self.position.x+self.width/2, self.position.y+self.height)
+
     def check_position(self, position):
         return position
 
@@ -60,6 +66,7 @@ class Robot:
     
     def extract_fov(self, playground):
         height, width, _ = playground.shape
+        p1, p2 = self.get_fov_coord()
 
         Y, X = np.ogrid[:height, :width]
         dist = np.sqrt((X - self.fov_base.x)**2 + (Y - self.fov_base.y)**2)
@@ -78,39 +85,24 @@ class Robot:
         cone_data = np.zeros_like(playground)
         cone_data[mask] = playground[mask]
 
-        # # cone_data = cone_data[yA:int(yB), int(xC):int(xD), :]
-        # match self.direction:
-        #     case 
-        # cone_data = cone_data[int(self.fov_base.y):int(pB[1]), max(0, int(pC[0])):min(int(pD[0]),640)+1, :]
-        cv2.imwrite("fov.jpg", cone_data)
+        cone_boundaries = np.array([
+                                    [int(self.fov_base.x), int(self.fov_base.y)],
+                                    [int(p1.x), int(p1.y)],
+                                    [int(p2.x), int(p2.y)],
+                                    [int(self.fov_base.x + self.fov_distance * np.cos(self.direction)), int(self.fov_base.y + self.fov_distance * np.sin(self.direction))]
+                                    ])
 
-        # fov_image = np.zeros((2*self.fov_distance, 2*self.fov_distance, 3), dtype=np.uint8)
-        # fov_image[:cone_data.shape[0], (fov_image.shape[1]//2)-(cone_data.shape[1]//2):(fov_image.shape[1]//2)+(cone_data.shape[1]//2), :] = cone_data
-        return cone_data
+        x,y,w,h = cv2.boundingRect(cone_boundaries)
+        return cone_data[max(0,y):min(height,y+h), max(0,x):min(height,x+w), :]
 
     def fov_analysis(self):
-        results = self.model.predict(self.fov)
+        results = self.model.predict(self.fov, conf=0.4)
         return self.plot_bboxes(results)
     
-    # def plot_bboxes(self, results, frame):
-    #     xyxys = []
-    #     confidences = []
-
-    #     for result in results:
-    #         boxes = result.boxes.cpu().numpy()
-    #         xyxys = boxes.xyxy
-
-    #         for xyxy in xyxys:
-    #             cv2.rectangle(frame, (int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3])), (255,0,0), 1)
-
-    #         return result.plot()
-
-    #     # return frame
-
     def plot_bboxes(self, results):
         img = None
-
+        confidences = []
         for result in results:
             img = result.plot(line_width=1, labels=False, probs=True)
-
+            print(result.boxes.conf)
         return img
