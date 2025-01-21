@@ -71,17 +71,13 @@ class Robot:
         Y, X = np.ogrid[:height, :width]
         dist = np.sqrt((X - self.fov_base.x)**2 + (Y - self.fov_base.y)**2)
 
-        # Calculer les angles des points par rapport à (x, y)
         angles = np.arctan2(Y - self.fov_base.y, X - self.fov_base.x)
 
-        # Normaliser les angles par rapport à l'angle de direction du cône
         angle_diff = np.abs(angles - self.direction)
         angle_diff = np.where(angle_diff > np.pi, 2 * np.pi - angle_diff, angle_diff)
 
-        # Créer un masque pour les points dans le cône de vision
         mask = (dist <= self.fov_distance) & (angle_diff <= self.fov_angle / 2)
 
-        # Appliquer le masque pour obtenir les données dans le cône
         cone_data = np.zeros_like(playground)
         cone_data[mask] = playground[mask]
 
@@ -101,7 +97,6 @@ class Robot:
     
     def plot_bboxes(self, results):
         img = None
-        confidences = []
         for result in results:
             img = result.plot(line_width=1, labels=False, probs=True)
             print(result.boxes.conf)

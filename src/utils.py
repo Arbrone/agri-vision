@@ -3,8 +3,8 @@ import cv2
 import random
 import glob
 from pathlib import Path
+
 from PySide6.QtGui import QImage, QPixmap
-from PySide6.QtCore import Qt
 
 class Point:
     def __init__(self, x, y):

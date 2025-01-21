@@ -1,14 +1,14 @@
 import sys
-import utils
 import numpy as np
-import robot
 import cv2
+
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QShortcut
-from PySide6.QtWidgets import (QApplication, QHBoxLayout, QLineEdit, QMainWindow,
+from PySide6.QtWidgets import (QApplication, QHBoxLayout, QMainWindow,
                                QPushButton, QVBoxLayout, QWidget, QLabel)
-from PySide6.QtCharts import QChartView, QPieSeries, QChart
 
+import utils
+import robot
 
 class Widget(QWidget):
     def __init__(self):
